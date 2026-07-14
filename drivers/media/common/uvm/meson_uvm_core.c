@@ -955,7 +955,29 @@ EXPORT_SYMBOL(meson_uvm_setinfo);
 
 int uvm_detach_hook_mod(struct dma_buf *dmabuf, int type)
 {
+	struct uvm_handle *handle;
+	struct uvm_hook_mod *uhmod = NULL;
+
 	UVM_PRINTK(UVM_DBG, "%s %s called.\n", __func__, current->comm);
+
+	handle = dmabuf->priv;
+	UVM_PRINTK(MUA_INFO, "%s, dmabuf:%px handle->flags:%lu\n",
+		__func__, dmabuf, handle->flags);
+	if ((type & BIT(PROCESS_HWC)) && (handle->flags & MUA_DETACH)) {
+		type &= ~BIT(PROCESS_HWC);
+
+		uhmod = uvm_find_hook_mod(handle, type);
+		if (uhmod) {
+			if (uhmod->type == VF_PROCESS_DI)
+				handle->flags &= ~BIT(UVM_DETACH_FLAG);
+			UVM_PRINTK(UVM_DBG, "%s %s after flags=%d.\n",
+				__func__, current->comm, handle->flags);
+		} else {
+			UVM_PRINTK(UVM_DBG, "%s, uhmod is NULL! can not find the match uhmod\n",
+				__func__);
+		}
+	}
+
 	return uvm_put_hook_mod(dmabuf, type);
 }
 EXPORT_SYMBOL(uvm_detach_hook_mod);
@@ -1035,7 +1057,6 @@ int uvm_put_hook_mod(struct dma_buf *dmabuf, int type)
 	struct uvm_handle *handle;
 	struct uvm_hook_mod *uhmod = NULL;
 	int ret = 0;
-	unsigned int ref = 0;
 
 	UVM_PRINTK(MUA_INFO, "%s, mod_type:%d %s called.\n", __func__, type, current->comm);
 
@@ -1060,11 +1081,6 @@ int uvm_put_hook_mod(struct dma_buf *dmabuf, int type)
 			UVM_PRINTK(UVM_DBG, "%s before kref_put uhmod:%px, dmabuf:%px ref:%u\n",
 				__func__, uhmod, dmabuf, kref_read(&uhmod->ref));
 			ret = kref_put(&uhmod->ref, uvm_hook_mod_release);
-			ref = kref_read(&uhmod->ref);
-			if (uhmod->type == VF_PROCESS_DI && ref == 0)
-				handle->flags &= ~BIT(UVM_DETACH_FLAG);
-			UVM_PRINTK(UVM_DBG, "%s, after kref_put dmabuf:%px ref:%u flags:%lu\n",
-					__func__, dmabuf, ref, handle->flags);
 		} else {
 			UVM_PRINTK(UVM_DBG, "%s, uhmod is NULL! can not find the match uhmod\n",
 				__func__);
